@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank Monitoring Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <h1>💧 Smart Tank Monitoring System</h1>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-indicator"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="main-grid">
+            <!-- Water Level Card -->
+            <section class="card card-large">
+                <h2>Water Level History</h2>
+                <div class="chart-container">
+                    <canvas id="waterLevelChart"></canvas>
+                </div>
+                <div class="current-level">
+                    <span class="label">Current Level:</span>
+                    <span class="value" id="currentLevel">-- cm</span>
+                </div>
+            </section>
+
+            <!-- Valve Control Card -->
+            <section class="card">
+                <h2>Valve Opening</h2>
+                <div class="gauge-container">
+                    <svg class="gauge" viewBox="0 0 200 120" id="valveGauge">
+                        <!-- Background arc -->
+                        <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#2a2a3e" stroke-width="20"/>
+                        <!-- Value arc -->
+                        <path class="gauge-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#00d9ff" stroke-width="20" stroke-dasharray="251.2 251.2" stroke-dashoffset="251.2"/>
+                        <!-- Center text -->
+                        <text x="100" y="95" text-anchor="middle" class="gauge-text">
+                            <tspan id="valvePercentage" font-size="32" font-weight="bold">0</tspan>
+                            <tspan font-size="20">%</tspan>
+                        </text>
+                    </svg>
+                </div>
+            </section>
+
+            <!-- System State Card -->
+            <section class="card">
+                <h2>System State</h2>
+                <div class="state-info">
+                    <div class="state-badge" id="modeBadge">UNCONNECTED</div>
+                    <div class="state-details">
+                        <p><strong>TMS Status:</strong> <span id="tmsStatus">Disconnected</span></p>
+                        <p><strong>Last Update:</strong> <span id="lastUpdate">--</span></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Control Panel Card -->
+            <section class="card">
+                <h2>Manual Control</h2>
+                <div class="control-panel">
+                    <!-- Mode Toggle -->
+                    <div class="control-group">
+                        <label>System Mode:</label>
+                        <div class="mode-toggle">
+                            <button id="btnAutomatic" class="mode-btn active">Automatic</button>
+                            <button id="btnManual" class="mode-btn">Manual</button>
+                        </div>
+                    </div>
+
+                    <!-- Manual Valve Control -->
+                    <div class="control-group" id="manualControlGroup" style="display: none;">
+                        <label for="valveSlider">Valve Opening:</label>
+                        <div class="slider-container">
+                            <input type="range" id="valveSlider" min="0" max="100" value="0" step="1">
+                            <span class="slider-value" id="sliderValue">0%</span>
+                        </div>
+                        <button id="btnSetValve" class="btn-primary">Apply</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>IOT Assignment #3 - Smart Tank Monitoring System</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
