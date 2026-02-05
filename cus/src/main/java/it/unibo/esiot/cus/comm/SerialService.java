@@ -50,15 +50,27 @@ public class SerialService implements Runnable {
         }
 
         try {
-            // Main loop - read incoming messages from WCS
+            long lastHeartbeat = System.currentTimeMillis();
+            final long HEARTBEAT_INTERVAL_MS = 2000; // Send heartbeat every 2 seconds
+
+            // Main loop - read incoming messages from WCS and send heartbeat
+            // Main loop - read incoming messages from WCS and send heartbeat
             while (running) {
-                if (reader.ready()) {
-                    String line = reader.readLine();
+                try {
+                    String line = reader.readLine(); // Blocking read
                     if (line != null && !line.trim().isEmpty()) {
                         handleIncomingMessage(line.trim());
                     }
+                } catch (Exception e) {
+                    // Timeout is expected if no data, just continue
                 }
-                Thread.sleep(100); // Small delay to avoid busy waiting
+
+                // Send periodic heartbeat to keep WCS connection alive
+                long now = System.currentTimeMillis();
+                if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+                    sendHeartbeat();
+                    lastHeartbeat = now;
+                }
             }
         } catch (Exception e) {
             System.err.println("[Serial] Error: " + e.getMessage());
@@ -111,7 +123,13 @@ public class SerialService implements Runnable {
             if (json.has("mode")) {
                 String mode = json.get("mode").getAsString();
                 System.out.println("[Serial] WCS Mode: " + mode);
-                // Could update local state if needed
+                if (mode.equals("AUTOMATIC")) {
+                    systemState.setCurrentMode(SystemState.Mode.AUTOMATIC);
+                } else if (mode.equals("MANUAL")) {
+                    systemState.setCurrentMode(SystemState.Mode.MANUAL);
+                } else if (mode.equals("UNCONNECTED")) {
+                    systemState.setCurrentMode(SystemState.Mode.UNCONNECTED);
+                }
             }
 
             if (json.has("valve")) {
@@ -173,6 +191,30 @@ public class SerialService implements Runnable {
             System.out.println("[Serial] Sent mode command: " + mode);
         } catch (Exception e) {
             System.err.println("[Serial] Error sending mode command: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Send heartbeat ping to WCS to keep connection alive
+     * This method is thread-safe and can be called from other threads
+     */
+    public synchronized void sendHeartbeat() {
+        if (writer == null) {
+            return; // Silently fail if port not open
+        }
+
+        try {
+            JsonObject command = new JsonObject();
+            command.addProperty("cmd", "ping");
+
+            String json = gson.toJson(command);
+            writer.println(json);
+            writer.flush();
+
+            // Don't log heartbeat to avoid spam - uncomment for debugging
+            // System.out.println("[Serial] Sent heartbeat");
+        } catch (Exception e) {
+            System.err.println("[Serial] Error sending heartbeat: " + e.getMessage());
         }
     }
 

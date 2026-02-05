@@ -38,10 +38,6 @@ void setValvePercentage(int percentage) {
     
     valveServo.write(angle);
     currentValvePercentage = percentage;
-    
-    Serial.print("Valve set to: ");
-    Serial.print(percentage);
-    Serial.println("%");
 }
 
 /**

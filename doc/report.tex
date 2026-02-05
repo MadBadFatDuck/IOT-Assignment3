@@ -1,0 +1,164 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+
+\geometry{
+    a4paper,
+    total={170mm,257mm},
+    left=20mm,
+    top=20mm,
+}
+
+\title{
+    \textbf{Smart Tank Monitoring System} \\
+    \large IoT Assignment \#03
+}
+\author{Elber}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\vspace{2cm}
+
+\begin{abstract}
+The Smart Tank Monitoring System is a modular IoT solution designed to monitor rainwater levels in a tank and control a water channel valve. The system operates in two main modes: AUTOMATIC (software-controlled) and MANUAL (operator-controlled). It integrates four subsystems: an ESP32-based monitoring unit (TMS), an Arduino-based actuator unit (WCS), a Central Control Unit (CUS), and a Web Dashboard (DBS), communicating via MQTT, Serial, and HTTP protocols.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{System Overview}
+The system creates a distributed architecture for tank monitoring and control. It addresses the requirement of managing water levels to prevent overflow or dry states by controlling a discharge valve.
+
+The core functionalities are:
+\begin{itemize}
+    \item \textbf{Monitoring}: Continuous reading of water levels using sonar.
+    \item \textbf{Control}: Automated valve actuation based on defined logic policies or manual override.
+    \item \textbf{Visualization}: Real-time dashboard for remote supervision.
+    \item \textbf{Alerting}: Visual indicators (LEDs) and system states (Warning, Alarm).
+\end{itemize}
+
+\section{System Architecture}
+The system is divided into four main subsystems:
+
+\subsection{1. Tank Monitoring Subsystem (TMS)}
+\textbf{Hardware}: ESP32 based microcontroller.\\
+\textbf{Role}: Captures environmental data and handles network connectivity.\\
+\textbf{Functionality}:
+\begin{itemize}
+    \item Measures water level using an HC-SR04 sonar sensor.
+    \item Publishes data to the \texttt{tank/level} MQTT topic.
+    \item Indicates connection status via Green (Connected) and Red (Error) LEDs.
+\end{itemize}
+
+\subsection{2. Water Channel Subsystem (WCS)}
+\textbf{Hardware}: Arduino UNO.\\
+\textbf{Role}: Physical actuation and local user interface.\\
+\textbf{Functionality}:
+\begin{itemize}
+    \item Controls the servo motor for valve opening ($0^\circ$ to $180^\circ$ mapped to 0-100\%).
+    \item Provides local manual control via a Potentiometer.
+    \item Displays current status on an LCD screen.
+    \item Communicates with the CUS via Serial (JSON protocol).
+\end{itemize}
+
+\subsection{3. Control Unit Subsystem (CUS)}
+\textbf{Software}: Java Application running on a PC/Server.\\
+\textbf{Role}: The brain of the system, implementing the control logic.\\
+\textbf{Functionality}:
+\begin{itemize}
+    \item Acts as a bridge between MQTT (TMS), Serial (WCS), and HTTP (DBS).
+    \item Implements the automatic control policy based on thresholds $L1, L2$ and times $T1, T2$.
+    \item Manages the global system state.
+\end{itemize}
+
+\subsection{4. Dashboard Subsystem (DBS)}
+\textbf{Software}: Web Application (HTML/CSS/JS).\\
+\textbf{Role}: Remote monitoring and control interface.\\
+\textbf{Functionality}:
+\begin{itemize}
+    \item Visualizes real-time water level graphs.
+    \item Allows mode switching (Automatic $\leftrightarrow$ Manual).
+    \item Provides remote manual control of the valve.
+\end{itemize}
+
+\newpage
+
+\section{Control Logic and FSMs}
+
+\subsection{Mode Management}
+The system operates in two mutually exclusive modes:
+\begin{itemize}
+    \item \textbf{AUTOMATIC}: The CUS determines the valve opening based on sensor readings.
+    \item \textbf{MANUAL}: The user controls the valve setting via the Potentiometer (local) or the Dashboard (remote).
+\end{itemize}
+A timeout mechanism ensures safety: if the TMS stops sending data for $T2$ seconds, the system enters an \textbf{UNCONNECTED} state.
+
+\subsection{Automatic Control Policy}
+The automatic logic uses two water level thresholds ($L_1 < L_2$) and a timing threshold ($T_1$).
+
+\begin{table}[H]
+    \centering
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Condition} & \textbf{Valve Action} & \textbf{Description} \\
+        \hline
+        $Level < L_1$ & \textbf{0\% (Closed)} & Normal operation. \\
+        \hline
+        $L_1 < Level < L_2$ & \textbf{50\% (Half)} & \textit{Warning state}. Valve opens after duration $\ge T_1$. \\
+        \hline
+        $Level \ge L_2$ & \textbf{100\% (Open)} & \textit{Alarm state}. Valve opens immediately. \\
+        \hline
+    \end{tabular}
+    \caption{Automatic Control Logic Table}
+    \label{tab:logic}
+\end{table}
+
+\subsection{Finite State Machines (FSM)}
+
+\subsubsection{TMS FSM (ESP32)}
+\begin{itemize}
+    \item \texttt{STATE\_INITIALIZING}: Hardware setup.
+    \item \texttt{STATE\_CONNECTING\_WIFI}: Connecting to WiFi network.
+    \item \texttt{STATE\_CONNECTING\_MQTT}: Connecting to the MQTT broker.
+    \item \texttt{STATE\_CONNECTED}: Normal operation, sensing and publishing.
+    \item \texttt{STATE\_NETWORK\_ERROR}: Fallback state on connection failure.
+\end{itemize}
+
+\subsubsection{WCS FSM (Arduino)}
+\begin{itemize}
+    \item \texttt{MODE\_UNCONNECTED}: Safe state, waiting for CUS heartbeat.
+    \item \texttt{MODE\_AUTOMATIC}: Actuator follows CUS commands.
+    \item \texttt{MODE\_MANUAL}: Actuator follows Potentiometer/Dashboard input.
+\end{itemize}
+
+\section{Hardware Implementation}
+
+\subsection{TMS Connections (ESP32)}
+\begin{itemize}
+    \item \textbf{Sonar Trigger}: GPIO 13
+    \item \textbf{Sonar Echo}: GPIO 12
+    \item \textbf{Green LED}: GPIO 2
+    \item \textbf{Red LED}: GPIO 4
+\end{itemize}
+
+\subsection{WCS Connections (Arduino UNO)}
+\begin{itemize}
+    \item \textbf{Servo Motor}: Pin 9 (PWM)
+    \item \textbf{Potentiometer}: Pin A0 (Analog Input)
+    \item \textbf{Button}: Pin 2 (Digital Input with Interrupt)
+    \item \textbf{LCD Display}: I2C Bus (SDA=A4, SCL=A5)
+\end{itemize}
+
+\end{document}

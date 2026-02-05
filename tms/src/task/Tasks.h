@@ -17,6 +17,9 @@ extern TaskHandle_t sonarTaskHandle;
 extern TaskHandle_t mqttTaskHandle;
 extern TaskHandle_t ledTaskHandle;
 
+// Shared water level variable (protected by atomic operations)
+volatile float latestWaterLevel = 0.0;
+
 // ==================== FREERTOS TASKS ====================
 
 /**
@@ -34,8 +37,8 @@ void sonarTask(void* parameter) {
                 Serial.print(waterLevel);
                 Serial.println(" cm");
                 
-                // TODO: Store reading for MQTT task to publish
-                // You can use a queue or shared variable with mutex
+                // Update shared variable for MQTT task
+                latestWaterLevel = waterLevel;
             }
         }
         
@@ -84,10 +87,12 @@ void mqttTask(void* parameter) {
                 } else {
                     mqttClient.loop();
                     
-                    // TODO: Publish water level data
-                    // char msg[50];
-                    // sprintf(msg, "%.2f", waterLevel);
-                    // mqttClient.publish(MQTT_TOPIC_LEVEL, msg);
+                    // Publish water level data (plain number format for CUS compatibility)
+                    if (latestWaterLevel > 0) {
+                        char msg[20];
+                        snprintf(msg, sizeof(msg), "%.2f", latestWaterLevel);
+                        mqttClient.publish(MQTT_TOPIC_LEVEL, msg);
+                    }
                 }
                 vTaskDelay(pdMS_TO_TICKS(100));
                 break;
@@ -107,24 +112,27 @@ void mqttTask(void* parameter) {
 
 /**
  * LED Task: Controls LED indicators based on system state
+ * Requirement: Green ON + Red OFF = OK, Red ON + Green OFF = Error
  */
 void ledTask(void* parameter) {
     for (;;) {
         switch (currentState) {
             case STATE_CONNECTED:
+                // System working correctly: Green ON, Red OFF
                 digitalWrite(LED_GREEN_PIN, HIGH);
                 digitalWrite(LED_RED_PIN, LOW);
                 break;
                 
             case STATE_NETWORK_ERROR:
+                // Network problems: Red ON, Green OFF
                 digitalWrite(LED_GREEN_PIN, LOW);
                 digitalWrite(LED_RED_PIN, HIGH);
                 break;
                 
             default:
-                // Blink both LEDs during initialization/connection
-                digitalWrite(LED_GREEN_PIN, !digitalRead(LED_GREEN_PIN));
-                digitalWrite(LED_RED_PIN, !digitalRead(LED_RED_PIN));
+                // During initialization/connection: Both OFF
+                digitalWrite(LED_GREEN_PIN, LOW);
+                digitalWrite(LED_RED_PIN, HIGH);
                 break;
         }
         

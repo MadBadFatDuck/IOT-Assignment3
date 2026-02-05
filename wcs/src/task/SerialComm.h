@@ -47,20 +47,16 @@ void processSerialCommand(const String& command) {
     if (strcmp(cmd, "set_valve") == 0) {
         // Command to set valve percentage
         int value = doc["value"];
-        Serial.print("Received valve command: ");
-        Serial.println(value);
         
-        if (currentMode == MODE_AUTOMATIC) {
+        if (currentMode != MODE_UNCONNECTED) {
             targetValvePercentage = value;
-        } else {
-            Serial.println("Ignored - not in AUTOMATIC mode");
+            // Ignore potentiometer for 1 second to avoid noise/fighting
+            ignorePotUntil = millis() + 1000;
         }
         
     } else if (strcmp(cmd, "set_mode") == 0) {
         // Command to change mode
         const char* mode = doc["value"];
-        Serial.print("Received mode command: ");
-        Serial.println(mode);
         
         if (strcmp(mode, "AUTOMATIC") == 0) {
             handleModeTransition(MODE_AUTOMATIC);

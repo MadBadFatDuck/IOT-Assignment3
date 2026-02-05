@@ -5,12 +5,15 @@
 
 // Configuration
 const API_BASE_URL = 'http://localhost:8080/api';
-const UPDATE_INTERVAL = 1000; // 1 second
+const UPDATE_INTERVAL = 200; // 0.2 second for real-time feel
 
 // State
 let currentMode = 'UNCONNECTED';
 let chart = null;
 let updateTimer = null;
+let userInteracting = false; // Track if user is using the slider
+let lastCommandTime = 0; // Track when the last command was sent
+let sliderDirty = false; // Track if the slider value has been changed by user but not sent
 
 // Chart.js configuration
 const chartConfig = {
@@ -44,7 +47,7 @@ const chartConfig = {
         scales: {
             x: {
                 grid: { color: '#2a2a3e' },
-                ticks: { 
+                ticks: {
                     color: '#6e6e8f',
                     maxRotation: 45,
                     autoSkip: true,
@@ -64,17 +67,17 @@ const chartConfig = {
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Dashboard initializing...');
-    
+
     // Initialize chart
     const ctx = document.getElementById('waterLevelChart').getContext('2d');
     chart = new Chart(ctx, chartConfig);
-    
+
     // Set up event listeners
     setupEventListeners();
-    
+
     // Start auto-update
     startAutoUpdate();
-    
+
     console.log('Dashboard initialized');
 });
 
@@ -82,37 +85,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function setupEventListeners() {
     // Mode toggle buttons
-    document.getElementById('btnAutomatic').addEventListener('click', () => {
-        setMode('AUTOMATIC');
-    });
-    
-    document.getElementById('btnManual').addEventListener('click', () => {
-        setMode('MANUAL');
-    });
-    
+    document.getElementById('btnAutomatic').addEventListener('click', () => setMode('AUTOMATIC'));
+    document.getElementById('btnManual').addEventListener('click', () => setMode('MANUAL'));
+
     // Valve slider
     const slider = document.getElementById('valveSlider');
     slider.addEventListener('input', (e) => {
         document.getElementById('sliderValue').textContent = e.target.value + '%';
+        sliderDirty = true; // User has modified the value
     });
-    
+
+    // Track user interaction to prevent overwriting while dragging
+    slider.addEventListener('mousedown', () => userInteracting = true);
+    slider.addEventListener('mouseup', () => userInteracting = false);
+    slider.addEventListener('touchstart', () => userInteracting = true);
+    slider.addEventListener('touchend', () => userInteracting = false);
+
     // Apply valve button
     document.getElementById('btnSetValve').addEventListener('click', () => {
         const value = parseInt(document.getElementById('valveSlider').value);
+        lastCommandTime = Date.now(); // Record command time
+        sliderDirty = false; // Reset dirty flag as we are sending the value
         setValveOpening(value);
     });
 }
-
 // ==================== AUTO-UPDATE ====================
 
 function startAutoUpdate() {
     updateStatus();
     updateHistory();
-    
+
     updateTimer = setInterval(() => {
         updateStatus();
     }, UPDATE_INTERVAL);
-    
+
     // Update history less frequently
     setInterval(() => {
         updateHistory();
@@ -124,13 +130,13 @@ function startAutoUpdate() {
 async function updateStatus() {
     try {
         const response = await fetch(`${API_BASE_URL}/status`);
-        
+
         if (!response.ok) {
             throw new Error('Server not available');
         }
-        
+
         const data = await response.json();
-        
+
         // Update UI with status data
         updateConnectionStatus(true);
         updateMode(data.mode);
@@ -138,7 +144,7 @@ async function updateStatus() {
         updateValveGauge(data.valveOpening);
         updateTMSStatus(data.tmsConnected);
         updateLastUpdate();
-        
+
     } catch (error) {
         console.error('Error fetching status:', error);
         updateConnectionStatus(false);
@@ -149,14 +155,14 @@ async function updateStatus() {
 async function updateHistory() {
     try {
         const response = await fetch(`${API_BASE_URL}/history`);
-        
+
         if (!response.ok) {
             throw new Error('Failed to fetch history');
         }
-        
+
         const data = await response.json();
         updateChart(data.readings);
-        
+
     } catch (error) {
         console.error('Error fetching history:', error);
     }
@@ -169,19 +175,19 @@ async function setMode(mode) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode: mode })
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             alert('Error: ' + error.error);
             return;
         }
-        
-        console.log('Mode changed to:', mode);
+
+        console.log('Mode set to:', mode);
         await updateStatus();
-        
+
     } catch (error) {
         console.error('Error setting mode:', error);
-        alert('Failed to change mode. Check connection to CUS.');
+        alert('Failed to set mode. Check connection.');
     }
 }
 
@@ -192,19 +198,19 @@ async function setValveOpening(opening) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ opening: opening })
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             alert('Error: ' + error.error);
             return;
         }
-        
+
         console.log('Valve set to:', opening + '%');
         await updateStatus();
-        
+
     } catch (error) {
         console.error('Error setting valve:', error);
-        alert('Failed to set valve. Check connection to CUS.');
+        alert('Failed to set valve. Check connection.');
     }
 }
 
@@ -214,7 +220,7 @@ function updateConnectionStatus(connected) {
     const statusElement = document.getElementById('connectionStatus');
     const indicatorElement = statusElement.querySelector('.status-indicator');
     const textElement = statusElement.querySelector('.status-text');
-    
+
     if (connected) {
         indicatorElement.style.background = 'var(--accent-success)';
         textElement.textContent = 'Connected';
@@ -226,28 +232,38 @@ function updateConnectionStatus(connected) {
 
 function updateMode(mode) {
     currentMode = mode;
-    
+
     // Update badge
     const badge = document.getElementById('modeBadge');
     badge.textContent = mode;
     badge.className = 'state-badge ' + mode.toLowerCase().replace(' ', '-');
-    
-    // Update mode buttons
-    const btnAutomatic = document.getElementById('btnAutomatic');
-    const btnManual = document.getElementById('btnManual');
-    
-    btnAutomatic.classList.remove('active');
-    btnManual.classList.remove('active');
-    
+
+    // Update buttons state
+    const btnAuto = document.getElementById('btnAutomatic');
+    const btnMan = document.getElementById('btnManual');
+
     if (mode === 'AUTOMATIC') {
-        btnAutomatic.classList.add('active');
+        btnAuto.classList.add('active');
+        btnMan.classList.remove('active');
+
         document.getElementById('manualControlGroup').style.display = 'none';
+        document.getElementById('autoControlMessage').style.display = 'block';
+        document.getElementById('autoControlMessage').innerHTML = '<i>Valve controlled by system logic. Switch to Manual to override.</i>';
+        sliderDirty = false; // Reset dirty flag when switching modes
+
     } else if (mode === 'MANUAL') {
-        btnManual.classList.add('active');
-        document.getElementById('manualControlGroup').style.display = 'flex';
+        btnAuto.classList.remove('active');
+        btnMan.classList.add('active');
+
+        document.getElementById('manualControlGroup').style.display = 'block';
+        document.getElementById('autoControlMessage').style.display = 'none';
+
     } else {
-        // UNCONNECTED or NOT AVAILABLE
+        // UNCONNECTED
+        btnAuto.classList.remove('active');
+        btnMan.classList.remove('active');
         document.getElementById('manualControlGroup').style.display = 'none';
+        document.getElementById('autoControlMessage').style.display = 'none';
     }
 }
 
@@ -259,15 +275,25 @@ function updateWaterLevel(level) {
 function updateValveGauge(percentage) {
     // Update gauge fill
     const gaugeFill = document.getElementById('gaugeFill');
-    const circumference = 251.2; // Approximate arc length
+    // Arc is a semi-circle with radius 40. Length = pi * 40 = ~125.66
+    const circumference = 125.6;
     const offset = circumference - (circumference * percentage / 100);
     gaugeFill.style.strokeDashoffset = offset;
-    
+    gaugeFill.style.strokeDasharray = circumference; // Ensure array matches length
+
     // Update percentage text
     document.getElementById('valvePercentage').textContent = percentage;
-    
-    // Update slider if in manual mode
-    if (currentMode === 'MANUAL') {
+    document.getElementById('gaugeText').textContent = percentage + '%';
+
+    // Update slider if we are in Manual mode, NOT interacting, AND haven't sent a command recently
+    // This prevents the slider from "jumping back" before the server processes the new value
+    const timeSinceLastCommand = Date.now() - lastCommandTime;
+
+    // Only update slider if:
+    // 1. We are NOT interacting with it (dragging)
+    // 2. The slider is NOT dirty (user hasn't moved it without setting)
+    // 3. We haven't just sent a command (wait for round trip)
+    if (currentMode === 'MANUAL' && !userInteracting && !sliderDirty && timeSinceLastCommand > 2000) {
         document.getElementById('valveSlider').value = percentage;
         document.getElementById('sliderValue').textContent = percentage + '%';
     }
@@ -289,15 +315,15 @@ function updateChart(readings) {
     if (!readings || readings.length === 0) {
         return;
     }
-    
+
     // Prepare data for chart
     const labels = readings.map(r => {
         const date = new Date(r.timestamp);
         return date.toLocaleTimeString();
     });
-    
+
     const data = readings.map(r => r.level);
-    
+
     // Update chart
     chart.data.labels = labels;
     chart.data.datasets[0].data = data;

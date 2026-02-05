@@ -78,6 +78,13 @@ public class TankMonitor implements Runnable {
             return;
         }
 
+        // If we just reconnected, switch to AUTOMATIC mode and sync with WCS
+        if (systemState.getCurrentMode() == Mode.UNCONNECTED) {
+            System.out.println("[TankMonitor] TMS connected - entering AUTOMATIC mode");
+            systemState.setCurrentMode(Mode.AUTOMATIC);
+            serialService.sendModeCommand("AUTOMATIC");
+        }
+
         // Only apply automatic control if in AUTOMATIC mode
         if (systemState.getCurrentMode() != Mode.AUTOMATIC) {
             return;

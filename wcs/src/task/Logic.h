@@ -20,16 +20,17 @@
  */
 void handleModeTransition(SystemMode newMode) {
     if (currentMode != newMode) {
-        Serial.print("Mode transition: ");
-        Serial.print(currentMode);
-        Serial.print(" -> ");
-        Serial.println(newMode);
+        // Removed debug prints to avoid breaking JSON protocol
+        // Serial.print("Mode transition: "); ...
         
         previousMode = currentMode;
         currentMode = newMode;
         
         // Force LCD update on mode change
         updateLCD();
+        
+        // Force immediate Serial update to notify CUS
+        sendStatusToSerial();
     }
 }
 
@@ -60,8 +61,15 @@ void updateFSM() {
             break;
             
         case MODE_MANUAL:
-            // In manual mode, read potentiometer and control valve
-            targetValvePercentage = readPotentiometerPercentage();
+            // In manual mode, allow control from both Potentiometer and Serial (Hybrid)
+            // Priority given to last interaction
+            
+            // Check if user moved potentiometer (and not ignored due to recent serial command)
+            if (millis() > ignorePotUntil && hasPotentiometerChanged()) {
+                targetValvePercentage = readPotentiometerPercentage();
+            }
+            // else: keep targetValvePercentage as is (it might have been set by Serial)
+            
             if (currentValvePercentage != targetValvePercentage) {
                 setValvePercentage(targetValvePercentage);
             }
@@ -76,31 +84,37 @@ void updateFSM() {
  * Toggles between AUTOMATIC and MANUAL modes
  */
 void handleButtonPress() {
-    bool buttonState = digitalRead(BUTTON_PIN);
+    bool reading = digitalRead(BUTTON_PIN);
     
-    // Check for button state change with debouncing
-    if (buttonState != lastButtonState) {
+    // Check for reading change (noise or press)
+    if (reading != lastButtonState) {
         lastButtonDebounceTime = millis();
     }
     
     if ((millis() - lastButtonDebounceTime) > BUTTON_DEBOUNCE_MS) {
-        // Stable button state
-        if (buttonState == LOW && lastButtonState == HIGH) {
-            // Button pressed (falling edge)
-            Serial.println("Button pressed - toggling mode");
+        // Reading has been stable for long enough
+        
+        // If the button state has changed
+        if (reading != stableButtonState) {
+            stableButtonState = reading;
             
-            // Toggle between AUTOMATIC and MANUAL (ignore if UNCONNECTED)
-            if (currentMode == MODE_AUTOMATIC) {
-                handleModeTransition(MODE_MANUAL);
-            } else if (currentMode == MODE_MANUAL) {
-                handleModeTransition(MODE_AUTOMATIC);
-            } else {
-                Serial.println("Cannot toggle mode - UNCONNECTED");
+            // Only act on falling edge (HIGH -> LOW)
+            if (stableButtonState == LOW) {
+                // Serial.println("Button pressed - toggling mode"); // REMOVED
+                
+                // Toggle between AUTOMATIC and MANUAL (ignore if UNCONNECTED)
+                if (currentMode == MODE_AUTOMATIC) {
+                    handleModeTransition(MODE_MANUAL);
+                } else if (currentMode == MODE_MANUAL) {
+                    handleModeTransition(MODE_AUTOMATIC);
+                } else {
+                    // Serial.println("Cannot toggle mode - UNCONNECTED"); // REMOVED
+                }
             }
         }
     }
     
-    lastButtonState = buttonState;
+    lastButtonState = reading;
 }
 
 // ==================== SETUP FUNCTIONS ====================

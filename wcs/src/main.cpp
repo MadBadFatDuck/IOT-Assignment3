@@ -32,7 +32,12 @@ int targetValvePercentage = 0;   // Target from CUS or potentiometer
 
 // Button state
 bool lastButtonState = HIGH;
+bool stableButtonState = HIGH;
 unsigned long lastButtonDebounceTime = 0;
+
+// Potentiometer state
+int lastPotValue = -1;
+unsigned long ignorePotUntil = 0;
 
 // Timing variables
 unsigned long lastLCDUpdate = 0;
